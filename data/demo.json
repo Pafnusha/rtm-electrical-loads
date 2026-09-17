@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "mode": "rtm",
+  "krTable": "table1",
+  "un": 0.4,
+  "krOverride": false,
+  "krManual": 1,
+  "groupKs": 0.5,
+  "rows": [
+    { "name": "Токарные станки", "n": 8, "pnUnit": 7.5, "ki": 0.14, "cosPhi": 0.4, "ks": 0.25 },
+    { "name": "Сварочные трансформаторы", "n": 4, "pnUnit": 25, "ki": 0.35, "cosPhi": 0.5, "ks": 0.35 },
+    { "name": "Вентиляторы", "n": 6, "pnUnit": 5.5, "ki": 0.7, "cosPhi": 0.8, "ks": 0.65 },
+    { "name": "Кран мостовой", "n": 2, "pnUnit": 22, "ki": 0.2, "cosPhi": 0.5, "ks": 0.3 },
+    { "name": "Освещение цеха", "n": 1, "pnUnit": 18, "ki": 0.85, "cosPhi": 0.95, "ks": 0.9 }
+  ]
+}
