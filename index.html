@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Калькулятор электрических нагрузок по РТМ 36.18.32.4-92 с экспортом в Excel (формулы)">
+  <title>РТМ 36.18.32.4-92 — расчёт электрических нагрузок</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <!-- ExcelJS: запись .xlsx с формулами в ячейках -->
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+</head>
+<body data-mode="rtm">
+  <div class="wrap">
+    <header class="app-header">
+      <div>
+        <span class="badge">РТМ 36.18.32.4-92 · форма Ф636-92</span>
+        <h1>Расчёт электрических нагрузок</h1>
+        <p class="sub">
+          Метод коэффициента использования (Ки, Кр, nэ) и упрощённый режим коэффициента спроса.
+          Экспорт в Excel с живыми формулами. Таблицы Кр 1 и 2 встроены с интерполяцией.
+        </p>
+      </div>
+    </header>
+
+    <section class="panel">
+      <h2>Параметры расчёта</h2>
+      <div class="controls">
+        <label class="field">
+          Режим
+          <select id="mode-select">
+            <option value="rtm">РТМ (Ки, Кр, nэ)</option>
+            <option value="demand">Коэффициент спроса</option>
+          </select>
+        </label>
+        <label class="field">
+          Таблица Кр
+          <select id="kr-table-select">
+            <option value="table1">Питающие сети (табл.1)</option>
+            <option value="table2">Шины НН / шинопроводы (табл.2)</option>
+          </select>
+        </label>
+        <label class="field">
+          Uн, кВ
+          <input type="number" id="un-input" min="0.1" step="0.01" value="0.4">
+        </label>
+        <label class="field">
+          Кс группы
+          <input type="number" id="group-ks" min="0" max="1" step="0.01" value="0.5">
+        </label>
+        <label class="check">
+          <input type="checkbox" id="kr-override">
+          Задать Кр вручную
+        </label>
+        <label class="field">
+          Кр (ручной)
+          <input type="number" id="kr-manual" min="0" step="0.01" value="1" disabled>
+        </label>
+      </div>
+      <div class="toolbar">
+        <button type="button" class="primary" id="btn-excel">Скачать Excel</button>
+        <button type="button" id="btn-save-json">Сохранить JSON</button>
+        <button type="button" id="btn-load-json">Загрузить JSON</button>
+        <input type="file" id="file-json" accept="application/json,.json" hidden>
+        <button type="button" class="ghost" id="btn-reset">Демо-пример</button>
+        <button type="button" id="btn-add">+ Добавить строку</button>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>Итоги</h2>
+      <div class="totals">
+        <div class="metric"><div class="lbl">ΣPн, кВт</div><div class="val" id="out-Pn">—</div></div>
+        <div class="metric"><div class="lbl">ΣКи·Pн, кВт</div><div class="val" id="out-KiPn">—</div></div>
+        <div class="metric"><div class="lbl">Ки ср</div><div class="val" id="out-KiAvg">—</div></div>
+        <div class="metric"><div class="lbl">nэ</div><div class="val" id="out-ne">—</div></div>
+        <div class="metric"><div class="lbl">Кр</div><div class="val" id="out-kr">—</div></div>
+        <div class="metric"><div class="lbl">tgφ ср</div><div class="val" id="out-tg">—</div></div>
+        <div class="metric highlight"><div class="lbl">Рр, кВт</div><div class="val" id="out-Pp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Qр, квар</div><div class="val" id="out-Qp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Sр, кВ·А</div><div class="val" id="out-Sp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Iр, А</div><div class="val" id="out-Ip">—</div></div>
+      </div>
+      <p class="note" id="kr-note"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Электроприёмники</h2>
+      <div class="table-wrap">
+        <table class="ep">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Наименование</th>
+              <th>n</th>
+              <th>Pн ед., кВт</th>
+              <th>Ки</th>
+              <th>cos φ</th>
+              <th>Кс</th>
+              <th>Pн</th>
+              <th>Ки·Pн</th>
+              <th>tg φ</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ep-tbody"></tbody>
+        </table>
+      </div>
+      <p class="note">
+        Pн строки = n · Pн_ед. tg φ = tan(arccos(cos φ)).
+        <span class="rtm-only-hint">В режиме РТМ Кр берётся из выбранной таблицы по nэ и Ки<sub>ср</sub>.</span>
+        <span class="demand-only-hint">В режиме спроса: Рр = Кс<sub>группы</sub> · ΣPн; Qр = Рр · tgφ<sub>ср</sub>.</span>
+      </p>
+    </section>
+
+    <section class="panel">
+      <details class="help">
+        <summary>Краткие формулы и примечания</summary>
+        <div class="body">
+          <ul>
+            <li>nэ = (ΣPн)² / Σ(n · Pн_ед²)</li>
+            <li>Рр = Кр · Σ(Ки·Pн)</li>
+            <li>Qр = 1,1 · Σ(Ки·Pн) · tgφ<sub>ср</sub> при nэ ≤ 10; иначе без коэффициента 1,1</li>
+            <li>tgφ<sub>ср</sub> — средневзвешенный по Ки·Pн</li>
+            <li>Sр = √(Рр² + Qр²); Iр = Sр / (√3 · Uн), Uн в кВ</li>
+            <li>При Ки ≥ 0,8 для табл. 1 принимается Кр = 1,0</li>
+            <li>Полный текст РТМ на сайт не копируется — используйте официальный документ</li>
+          </ul>
+        </div>
+      </details>
+    </section>
+
+    <footer>
+      Статический калькулятор ·
+      <a href="https://github.com/Pafnusha/rtm-electrical-loads">GitHub</a>
+      · не является заменой нормативного документа РТМ 36.18.32.4-92
+    </footer>
+  </div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
