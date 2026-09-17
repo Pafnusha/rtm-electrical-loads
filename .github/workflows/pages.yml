@@ -24,32 +24,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruct JS from payload chunks
-        run: |
-          set -euo pipefail
-          reconstruct() {
-            local prefix="$1"
-            local out="$2"
-            local dir=js/payload
-            local tmp
-            tmp=$(mktemp)
-            while IFS= read -r name; do
-              [ -n "$name" ] || continue
-              tr -d '\n' < "$dir/$name" >> "$tmp"
-            done < "$dir/${prefix}.manifest"
-            base64 -d "$tmp" > "$out"
-            rm -f "$tmp"
-            echo "Wrote $out ($(wc -c < "$out") bytes)"
-          }
-          reconstruct excel js/excel-export.js
-          reconstruct app js/app.js
-          # payload not needed on Pages site
-          rm -rf js/payload
-          test -s js/excel-export.js
-          test -s js/app.js
-          test -s js/kr-table.js
-          ls -la js/
-
       - name: Setup Pages
         uses: actions/configure-pages@v5
 
