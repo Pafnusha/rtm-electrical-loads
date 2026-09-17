@@ -7,13 +7,16 @@
 
 **Репозиторий:** https://github.com/Pafnusha/rtm-electrical-loads
 
-## Включение GitHub Pages (один раз)
+**Временное зеркало (пока Pages не включён):** https://raw.githack.com/Pafnusha/rtm-electrical-loads/main/index.html
 
-Workflow уже в репозитории (`.github/workflows/pages.yml`). Если сайт ещё не открывается:
+## Включение GitHub Pages (один раз, обязательно)
+
+Actions сам сайт не поднимет (у токена нет права создать Pages). Нужно включить публикацию **с ветки**:
 
 1. Откройте [Settings → Pages](https://github.com/Pafnusha/rtm-electrical-loads/settings/pages)
-2. **Build and deployment → Source:** выберите **GitHub Actions**
-3. Дождитесь успешного run workflow «Deploy GitHub Pages» (или Actions → Run workflow)
+2. **Build and deployment → Source:** выберите **Deploy from a branch** (не GitHub Actions)
+3. Branch: **main** и папка **/ (root)** → **Save**
+4. Подождите 1–2 минуты и откройте https://pafnusha.github.io/rtm-electrical-loads/
 
 ## Возможности
 
@@ -60,7 +63,6 @@ js/app.js
 js/kr-table.js
 js/excel-export.js
 data/demo.json
-.github/workflows/pages.yml
 ```
 
 ## Локальный просмотр
