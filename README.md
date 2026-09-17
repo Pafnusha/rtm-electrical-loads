@@ -7,6 +7,14 @@
 
 **Репозиторий:** https://github.com/Pafnusha/rtm-electrical-loads
 
+## Включение GitHub Pages (один раз)
+
+Workflow уже в репозитории (`.github/workflows/pages.yml`). Если сайт ещё не открывается:
+
+1. Откройте [Settings → Pages](https://github.com/Pafnusha/rtm-electrical-loads/settings/pages)
+2. **Build and deployment → Source:** выберите **GitHub Actions**
+3. Дождитесь успешного run workflow «Deploy GitHub Pages» (или Actions → Run workflow)
+
 ## Возможности
 
 - Режим **РТМ**: Ки, эффективное число ЭП nэ, коэффициент расчётной нагрузки Кр по табл. 1 или 2
@@ -48,27 +56,20 @@
 ```
 index.html
 css/styles.css
-js/app.js          — UI и расчёт
-js/kr-table.js     — табл. 1–2 и интерполяция
-js/excel-export.js — экспорт .xlsx с формулами
+js/app.js
+js/kr-table.js
+js/excel-export.js
 data/demo.json
 .github/workflows/pages.yml
 ```
 
 ## Локальный просмотр
 
-Из‑за ES-модулей удобнее поднять простой HTTP-сервер:
-
 ```bash
 cd rtm-electrical-loads
 python3 -m http.server 8080
-# открыть http://localhost:8080
+# http://localhost:8080
 ```
-
-## GitHub Pages
-
-Деплой выполняется Actions-воркфлоу `.github/workflows/pages.yml` при пуше в `main`
-(артефакт + `actions/deploy-pages`). Источник Pages: **GitHub Actions**.
 
 ## Лицензия
 
