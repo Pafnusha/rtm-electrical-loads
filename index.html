@@ -3,22 +3,21 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="Калькулятор электрических нагрузок по РТМ 36.18.32.4-92 с экспортом в Excel (формулы)">
-  <title>РТМ 36.18.32.4-92 — расчёт электрических нагрузок</title>
+  <meta name="description" content="Калькулятор электрических нагрузок по РТМ 36.18.32.4-92: итоги, КУ, Excel">
+  <title>РТМ — расчёт нагрузок и КУ</title>
   <link rel="stylesheet" href="css/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js" crossorigin="anonymous"></script>
   <script src="https://unpkg.com/exceljs@4.4.0/dist/exceljs.min.js" crossorigin="anonymous"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js" crossorigin="anonymous"></script>
 </head>
 <body data-mode="rtm">
-  <div class="wrap">
+  <div class="wrap wide">
     <header class="app-header">
       <div>
-        <span class="badge">РТМ 36.18.32.4-92 · форма Ф3636-92</span>
+        <span class="badge">РТМ 36.18.32.4-92 · ведомость нагрузок · КУ</span>
         <h1>Расчёт электрических нагрузок</h1>
         <p class="sub">
-          Метод коэффициента использования (Ки, Кр, nэ) и упрощённый режим коэффициента спроса.
-          Экспорт в Excel с живыми формулами. Таблицы Кр 1 и 2 встроены с интерполяцией.
+          Форма ведомости проекта: строки ЭП, ИТОГО, коэффициент одновременности и конденсаторная установка по cosφ проектировщика.
         </p>
       </div>
     </header>
@@ -26,34 +25,35 @@
     <section class="panel">
       <h2>Параметры расчёта</h2>
       <div class="controls">
-        <label class="field">
-          Режим
+        <label class="field">Режим
           <select id="mode-select">
             <option value="rtm">РТМ (Ки, Кр, nэ)</option>
             <option value="demand">Коэффициент спроса</option>
           </select>
         </label>
-        <label class="field">
-          Таблица Кр
+        <label class="field">Таблица Кр
           <select id="kr-table-select">
             <option value="table1">Питающие сети (табл.1)</option>
             <option value="table2">Шины НН / шинопроводы (табл.2)</option>
           </select>
         </label>
-        <label class="field">
-          Uн, кВ
+        <label class="field">Uн, кВ
           <input type="number" id="un-input" min="0.1" step="0.01" value="0.4">
         </label>
-        <label class="field">
-          Кс группы
+        <label class="field">Кс группы
           <input type="number" id="group-ks" min="0" max="1" step="0.01" value="0.5">
+        </label>
+        <label class="field">Ко (одновременность)
+          <input type="number" id="ko-input" min="0" max="1" step="0.01" value="0.9">
+        </label>
+        <label class="field">cosφ проектировщика (после КУ)
+          <input type="number" id="cos-target" min="0.1" max="0.999" step="0.01" value="0.95">
         </label>
         <label class="check">
           <input type="checkbox" id="kr-override">
           Задать Кр вручную
         </label>
-        <label class="field">
-          Кр (ручной)
+        <label class="field">Кр (ручной)
           <input type="number" id="kr-manual" min="0" step="0.01" value="1" disabled>
         </label>
       </div>
@@ -62,30 +62,47 @@
         <button type="button" id="btn-save-json">Сохранить JSON</button>
         <button type="button" id="btn-load-json">Загрузить JSON</button>
         <input type="file" id="file-json" accept="application/json,.json" hidden>
-        <button type="button" class="ghost" id="btn-reset">Демо-пример</button>
+        <button type="button" class="ghost" id="btn-reset">Демо промысел</button>
         <button type="button" id="btn-add">+ Добавить строку</button>
       </div>
     </section>
 
     <section class="panel">
-      <h2>Итоги</h2>
+      <h2>ИТОГО по узлу</h2>
       <div class="totals">
         <div class="metric"><div class="lbl">ΣPн, кВт</div><div class="val" id="out-Pn">—</div></div>
         <div class="metric"><div class="lbl">ΣКи·Pн, кВт</div><div class="val" id="out-KiPn">—</div></div>
         <div class="metric"><div class="lbl">Ки ср</div><div class="val" id="out-KiAvg">—</div></div>
+        <div class="metric"><div class="lbl">cosφ ср</div><div class="val" id="out-cos1">—</div></div>
+        <div class="metric"><div class="lbl">tgφ ср</div><div class="val" id="out-tg">—</div></div>
         <div class="metric"><div class="lbl">nэ</div><div class="val" id="out-ne">—</div></div>
         <div class="metric"><div class="lbl">Кр</div><div class="val" id="out-kr">—</div></div>
-        <div class="metric"><div class="lbl">tgφ ср</div><div class="val" id="out-tg">—</div></div>
-        <div class="metric highlight"><div class="lbl">Рр, кВт</div><div class="val" id="out-Pp">—</div></div>
-        <div class="metric highlight"><div class="lbl">Qр, квар</div><div class="val" id="out-Qp">—</div></div>
-        <div class="metric highlight"><div class="lbl">Sр, кВ·А</div><div class="val" id="out-Sp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Рр итого, кВт</div><div class="val" id="out-Pp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Qр итого, квар</div><div class="val" id="out-Qp">—</div></div>
+        <div class="metric highlight"><div class="lbl">Sр итого, кВ·А</div><div class="val" id="out-Sp">—</div></div>
         <div class="metric highlight"><div class="lbl">Iр, А</div><div class="val" id="out-Ip">—</div></div>
       </div>
       <p class="note" id="kr-note"></p>
     </section>
 
     <section class="panel">
-      <h2>Электроприёмники</h2>
+      <h2>Итого с Ко и конденсаторная установка</h2>
+      <div class="totals">
+        <div class="metric"><div class="lbl">Рр·Ко, кВт</div><div class="val" id="out-PpKo">—</div></div>
+        <div class="metric"><div class="lbl">Qр·Ко, квар</div><div class="val" id="out-QpKo">—</div></div>
+        <div class="metric"><div class="lbl">Sр·Ко, кВ·А</div><div class="val" id="out-SpKo">—</div></div>
+        <div class="metric"><div class="lbl">tgφ₂ после КУ</div><div class="val" id="out-tg2">—</div></div>
+        <div class="metric highlight"><div class="lbl">Qку = P·(tg1−tg2), квар</div><div class="val" id="out-Qc">—</div></div>
+        <div class="metric"><div class="lbl">Q после КУ, квар</div><div class="val" id="out-Qp2">—</div></div>
+        <div class="metric highlight"><div class="lbl">S после КУ, кВ·А</div><div class="val" id="out-Sp2">—</div></div>
+        <div class="metric"><div class="lbl">I после КУ, А</div><div class="val" id="out-Ip2">—</div></div>
+        <div class="metric highlight"><div class="lbl">Sтр реком., кВ·А</div><div class="val" id="out-Str">—</div></div>
+      </div>
+      <p class="note" id="ku-note"></p>
+    </section>
+
+    <section class="panel">
+      <h2>Электроприёмники (форма ведомости)</h2>
       <div class="table-wrap">
         <table class="ep">
           <thead>
@@ -94,12 +111,14 @@
               <th>Наименование</th>
               <th>n</th>
               <th>Pн ед., кВт</th>
+              <th>Pн, кВт</th>
               <th>Ки</th>
               <th>cos φ</th>
-              <th>Кс</th>
-              <th>Pн</th>
-              <th>Ки·Pн</th>
               <th>tg φ</th>
+              <th>P=Ки·Pн</th>
+              <th>Q=Ки·Pн·tg</th>
+              <th>n·Pн²</th>
+              <th>Кс</th>
               <th></th>
             </tr>
           </thead>
@@ -107,33 +126,30 @@
         </table>
       </div>
       <p class="note">
-        Pн строки = n · Pн_ед. tg φ = tan(arccos(cos φ)).
-        <span class="rtm-only-hint">В режиме РТМ Кр берётся из выбранной таблицы по nэ и Ки<sub>ср</sub>.</span>
-        <span class="demand-only-hint">В режиме спроса: Рр = Кс<sub>группы</sub> · ΣPн; Qр = Рр · tgφ<sub>ср</sub>.</span>
+        Итого входит в Рр, Qр, Sр. КУ: Qку = Рр·Ко · (tgφ<sub>1</sub> − tgφ<sub>2</sub>), где tgφ<sub>2</sub> = tan(arccos(cosφ проектировщика)).
       </p>
     </section>
 
     <section class="panel">
-      <details class="help">
-        <summary>Краткие формулы и примечания</summary>
+      <details class="help" open>
+        <summary>Формулы ведомости</summary>
         <div class="body">
           <ul>
-            <li>nэ = (ΣPн)² / Σ(n · Pн_ед²)</li>
-            <li>Рр = Кр · Σ(Ки·Pн)</li>
-            <li>Qр = 1,1 · Σ(Ки·Pн) · tgφ<sub>ср</sub> при nэ ≤ 10; иначе без коэффициента 1,1</li>
-            <li>tgφ<sub>ср</sub> — средневзвешенный по Ки·Pн</li>
-            <li>Sр = √(Рр² + Qр²); Iр = Sр / (√3 · Uн), Uн в кВ</li>
-            <li>При Ки ≥ 0,8 для табл. 1 принимается Кр = 1,0</li>
-            <li>Полный текст РТМ на сайт не копируется — используйте официальный документ</li>
+            <li>Pн = n · Pн_ед;  P = Ки · Pн;  Q = Ки · Pн · tgφ</li>
+            <li>nэ = (ΣPн)² / Σ(n · Pн_ед²);  Рр = Кр · Σ(Ки·Pн)</li>
+            <li>Qр = 1,1 · Σ(Ки·Pн) · tgφср при nэ ≤ 10; иначе без 1,1</li>
+            <li>Итого с Ко: Рр' = Рр·Ко;  Qр' = Qр·Ко</li>
+            <li>Qку = Рр' · (tgφ₁ − tgφ₂);  Qпосле = Qр' − Qку</li>
+            <li>Sпосле = √(Рр'² + Qпосле²);  Sтр — ближайший стандартный ТМ ≥ Sпосле</li>
           </ul>
         </div>
       </details>
     </section>
 
     <footer>
-      Статический калькулятор ·
+      <a href="https://pafnusha.github.io/ntd-neftegaz-electro/ntd.html">НТД РФ</a>
+      ·
       <a href="https://github.com/Pafnusha/rtm-electrical-loads">GitHub</a>
-      · не является заменой нормативного документа РТМ 36.18.32.4-92
     </footer>
   </div>
   <script type="module" src="js/app.js"></script>
