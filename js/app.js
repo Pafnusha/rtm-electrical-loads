@@ -1,21 +1,26 @@
 import { lookupKr } from './kr-table.js';
 import { exportToExcel } from './excel-export.js';
 
+const TR_SERIES = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000];
+
 const DEMO_ROWS = [
-  { name: 'Токарные станки', n: 8, pnUnit: 7.5, ki: 0.14, cosPhi: 0.4, ks: 0.25 },
-  { name: 'Сварочные трансформаторы', n: 4, pnUnit: 25, ki: 0.35, cosPhi: 0.5, ks: 0.35 },
-  { name: 'Вентиляторы', n: 6, pnUnit: 5.5, ki: 0.7, cosPhi: 0.8, ks: 0.65 },
-  { name: 'Кран мостовой', n: 2, pnUnit: 22, ki: 0.2, cosPhi: 0.5, ks: 0.3 },
-  { name: 'Освещение цеха', n: 1, pnUnit: 18, ki: 0.85, cosPhi: 0.95, ks: 0.9 }
+  { name: 'Сети внутриплощадочные. Электрообогрев трубопроводных коллекторов', n: 1, pnUnit: 340, ki: 0.75, cosPhi: 0.98, ks: 0.75 },
+  { name: 'Электрообогрев', n: 1, pnUnit: 200, ki: 0.75, cosPhi: 0.98, ks: 0.75 },
+  { name: 'Собственные нужды азотной станции', n: 1, pnUnit: 40, ki: 0.8, cosPhi: 0.85, ks: 0.8 },
+  { name: 'Азотная станция. Насосы (2 раб. + 1 рез.)', n: 2, pnUnit: 216, ki: 0.8, cosPhi: 0.8, ks: 0.8 },
+  { name: 'УПТ. Насосы 2046-P-301A,B,C (2 раб. + 1 рез.)', n: 2, pnUnit: 132, ki: 1, cosPhi: 0.8, ks: 1 },
+  { name: 'Технологические нагрузки УПТ', n: 1, pnUnit: 180, ki: 0.7, cosPhi: 0.75, ks: 0.7 }
 ];
 
 const state = {
-  mode: 'rtm', // 'rtm' | 'demand'
-  krTable: 'table1', // 'table1' | 'table2'
+  mode: 'rtm',
+  krTable: 'table1',
   un: 0.4,
   krOverride: false,
   krManual: 1.0,
   groupKs: 0.5,
+  ko: 0.9,
+  cosTarget: 0.95,
   rows: DEMO_ROWS.map((r) => ({ ...r, id: uid() }))
 };
 
@@ -33,10 +38,10 @@ function tgFromCos(cosPhi) {
   return Math.tan(Math.acos(clampCos(c)));
 }
 
-function round(x, d = 4) {
-  if (!Number.isFinite(x)) return 0;
-  const m = 10 ** d;
-  return Math.round(x * m) / m;
+function pickTransformer(s) {
+  if (!(s > 0)) return 0;
+  const found = TR_SERIES.find((x) => x >= s - 1e-9);
+  return found || Math.ceil(s);
 }
 
 function compute() {
@@ -49,36 +54,30 @@ function compute() {
     const Pn = n * pnUnit;
     const KiPn = ki * Pn;
     const tg = tgFromCos(cosPhi);
+    const Qrow = KiPn * tg;
     const nPn2 = n * pnUnit * pnUnit;
-    return { ...r, n, pnUnit, ki, cosPhi, ks, Pn, KiPn, tg, nPn2 };
+    return { ...r, n, pnUnit, ki, cosPhi, ks, Pn, KiPn, tg, Qrow, nPn2 };
   });
 
   const Pn = rows.reduce((s, r) => s + r.Pn, 0);
   const KiPn = rows.reduce((s, r) => s + r.KiPn, 0);
+  const Qsum = rows.reduce((s, r) => s + r.Qrow, 0);
   const sumNPn2 = rows.reduce((s, r) => s + r.nPn2, 0);
   const KiAvg = Pn > 0 ? KiPn / Pn : 0;
+  const sumN = rows.reduce((s, r) => s + r.n, 0);
 
   let ne = 0;
   if (sumNPn2 > 0 && Pn > 0) {
     ne = (Pn * Pn) / sumNPn2;
-    // Если все одинаковые — ne ≈ sum(n); ограничим разумным минимумом
     if (ne < 1 && Pn > 0) ne = 1;
-  }
-  // Не больше суммы n (по смыслу РТМ при упрощённых проверках)
-  const sumN = rows.reduce((s, r) => s + r.n, 0);
-  if (sumN > 0 && ne > sumN * 1.0001) {
-    // допускаем расчётное ne > n для разнотипных — по основной формуле это нормально
   }
 
   const tgWeightedNum = rows.reduce((s, r) => s + r.KiPn * r.tg, 0);
   const tgAvg = KiPn > 0 ? tgWeightedNum / KiPn : 0;
 
   let kr = 1;
-  if (state.krOverride) {
-    kr = Number(state.krManual) || 1;
-  } else {
-    kr = lookupKr(state.krTable, ne, KiAvg);
-  }
+  if (state.krOverride) kr = Number(state.krManual) || 1;
+  else kr = lookupKr(state.krTable, ne, KiAvg);
 
   let Pp; let Qp;
   if (state.mode === 'demand') {
@@ -93,14 +92,32 @@ function compute() {
   const Sp = Math.sqrt(Pp * Pp + Qp * Qp);
   const Un = Number(state.un) || 0.4;
   const Ip = Un > 0 ? Sp / (Math.sqrt(3) * Un) : 0;
+  const cos1 = Sp > 0 ? Pp / Sp : 0;
+
+  const ko = Number(state.ko);
+  const koSafe = Number.isFinite(ko) ? ko : 1;
+  const PpKo = Pp * koSafe;
+  const QpKo = Qp * koSafe;
+  const SpKo = Math.sqrt(PpKo * PpKo + QpKo * QpKo);
+  const IpKo = Un > 0 ? SpKo / (Math.sqrt(3) * Un) : 0;
+
+  const cos2 = Number(state.cosTarget) || 0.95;
+  const tg2 = tgFromCos(cos2);
+  const tg1 = PpKo > 0 ? QpKo / PpKo : tgAvg;
+  let Qc = PpKo * (tg1 - tg2);
+  if (Qc < 0) Qc = 0;
+  const Qp2 = QpKo - Qc;
+  const Sp2 = Math.sqrt(PpKo * PpKo + Qp2 * Qp2);
+  const Ip2 = Un > 0 ? Sp2 / (Math.sqrt(3) * Un) : 0;
+  const cosAfter = Sp2 > 0 ? PpKo / Sp2 : 0;
+  const Str = pickTransformer(Sp2);
 
   return {
-    rows,
-    Pn, KiPn, KiAvg, sumNPn2, ne, tgAvg, kr, Pp, Qp, Sp, Ip, Un, sumN
+    rows, Pn, KiPn, Qsum, KiAvg, sumNPn2, ne, tgAvg, kr, Pp, Qp, Sp, Ip, Un, sumN,
+    cos1, ko: koSafe, PpKo, QpKo, SpKo, IpKo, cos2, tg1, tg2, Qc, Qp2, Sp2, Ip2, cosAfter, Str
   };
 }
 
-/* ——— DOM ——— */
 const $ = (sel) => document.querySelector(sel);
 const tbody = () => $('#ep-tbody');
 
@@ -124,12 +141,14 @@ function renderRows() {
       <td><input type="text" data-f="name" value="${esc(r.name)}" placeholder="Наименование ЭП"></td>
       <td><input type="number" data-f="n" min="0" step="1" value="${r.n}"></td>
       <td><input type="number" data-f="pnUnit" min="0" step="0.01" value="${r.pnUnit}"></td>
+      <td class="col-calc" data-c="Pn">—</td>
       <td><input type="number" data-f="ki" min="0" max="1" step="0.01" value="${r.ki}" ${demand ? 'disabled' : ''}></td>
       <td><input type="number" data-f="cosPhi" min="0" max="1" step="0.01" value="${r.cosPhi}"></td>
-      <td><input type="number" data-f="ks" min="0" max="1" step="0.01" value="${r.ks}" ${demand ? '' : 'disabled'} title="Кс строки (справочно; в режиме спроса используется Кс группы)"></td>
-      <td class="col-calc" data-c="Pn">—</td>
-      <td class="col-calc" data-c="KiPn">—</td>
       <td class="col-calc" data-c="tg">—</td>
+      <td class="col-calc" data-c="KiPn">—</td>
+      <td class="col-calc" data-c="Qrow">—</td>
+      <td class="col-calc" data-c="nPn2">—</td>
+      <td><input type="number" data-f="ks" min="0" max="1" step="0.01" value="${r.ks}" ${demand ? '' : 'disabled'}></td>
       <td class="col-actions">
         <button type="button" class="btn-icon" data-act="dup" title="Дублировать">⧉</button>
         <button type="button" class="btn-icon danger" data-act="del" title="Удалить">×</button>
@@ -141,9 +160,14 @@ function renderRows() {
 
 function esc(s) {
   return String(s ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/"/g, '&quot;')
-    .replace(/</g, '&lt;');
+    .replace(/&/g, '&')
+    .replace(/"/g, '"')
+    .replace(/</g, '<');
+}
+
+function setTxt(id, val, d) {
+  const el = $(id);
+  if (el) el.textContent = fmt(val, d);
 }
 
 function updateCalcCells() {
@@ -155,27 +179,46 @@ function updateCalcCells() {
     tr.querySelector('[data-c="Pn"]').textContent = fmt(r.Pn, 2);
     tr.querySelector('[data-c="KiPn"]').textContent = fmt(r.KiPn, 2);
     tr.querySelector('[data-c="tg"]').textContent = fmt(r.tg, 3);
+    tr.querySelector('[data-c="Qrow"]').textContent = fmt(r.Qrow, 2);
+    tr.querySelector('[data-c="nPn2"]').textContent = fmt(r.nPn2, 0);
   });
 
-  $('#out-Pn').textContent = fmt(t.Pn, 2);
-  $('#out-KiPn').textContent = fmt(t.KiPn, 2);
-  $('#out-KiAvg').textContent = fmt(t.KiAvg, 3);
-  $('#out-ne').textContent = fmt(t.ne, 2);
-  $('#out-kr').textContent = fmt(t.kr, 3);
-  $('#out-tg').textContent = fmt(t.tgAvg, 3);
-  $('#out-Pp').textContent = fmt(t.Pp, 2);
-  $('#out-Qp').textContent = fmt(t.Qp, 2);
-  $('#out-Sp').textContent = fmt(t.Sp, 2);
-  $('#out-Ip').textContent = fmt(t.Ip, 1);
+  setTxt('#out-Pn', t.Pn, 2);
+  setTxt('#out-KiPn', t.KiPn, 2);
+  setTxt('#out-KiAvg', t.KiAvg, 3);
+  setTxt('#out-cos1', t.cos1, 3);
+  setTxt('#out-ne', t.ne, 2);
+  setTxt('#out-kr', t.kr, 3);
+  setTxt('#out-tg', t.tgAvg, 3);
+  setTxt('#out-Pp', t.Pp, 2);
+  setTxt('#out-Qp', t.Qp, 2);
+  setTxt('#out-Sp', t.Sp, 2);
+  setTxt('#out-Ip', t.Ip, 1);
+  setTxt('#out-PpKo', t.PpKo, 2);
+  setTxt('#out-QpKo', t.QpKo, 2);
+  setTxt('#out-SpKo', t.SpKo, 2);
+  setTxt('#out-tg2', t.tg2, 3);
+  setTxt('#out-Qc', t.Qc, 2);
+  setTxt('#out-Qp2', t.Qp2, 2);
+  setTxt('#out-Sp2', t.Sp2, 2);
+  setTxt('#out-Ip2', t.Ip2, 1);
+  setTxt('#out-Str', t.Str, 0);
 
   const krNote = $('#kr-note');
   if (state.mode === 'demand') {
-    krNote.textContent = 'В режиме спроса Кр не используется (Рр = Кс · ΣPн).';
+    krNote.textContent = 'Режим спроса: Рр = Кс · ΣPн. Итого идёт в расчёт КУ.';
   } else if (state.krOverride) {
-    krNote.textContent = 'Кр задан вручную.';
+    krNote.textContent = 'Кр задан вручную. Итого Рр/Рр·Ко используется для КУ.';
   } else {
     const tbl = state.krTable === 'table2' ? 'табл. 2' : 'табл. 1';
-    krNote.textContent = `Кр по ${tbl} РТМ (интерполяция по nэ=${fmt(t.ne, 2)}, Ки=${fmt(t.KiAvg, 3)}).`;
+    krNote.textContent = `Итого: nэ=${fmt(t.ne, 2)}, Ки=${fmt(t.KiAvg, 3)}, Кр по ${tbl} = ${fmt(t.kr, 3)}.`;
+  }
+
+  const ku = $('#ku-note');
+  if (ku) {
+    ku.textContent =
+      `cosφ₁=${fmt(t.cos1, 3)} (tgφ₁=${fmt(t.tg1, 3)}) → cosφ₂=${fmt(t.cos2, 3)} (tgφ₂=${fmt(t.tg2, 3)}). ` +
+      `Qку=${fmt(t.Qc, 1)} квар. После КУ: S=${fmt(t.Sp2, 1)} кВ·А, рекомендуется ТМ ${fmt(t.Str, 0)} кВ·А.`;
   }
 }
 
@@ -187,6 +230,8 @@ function syncControlsFromState() {
   $('#kr-manual').value = state.krManual;
   $('#kr-manual').disabled = !state.krOverride;
   $('#group-ks').value = state.groupKs;
+  if ($('#ko-input')) $('#ko-input').value = state.ko;
+  if ($('#cos-target')) $('#cos-target').value = state.cosTarget;
   document.body.dataset.mode = state.mode;
   renderRows();
 }
@@ -215,6 +260,15 @@ function bind() {
   });
   $('#group-ks').addEventListener('input', (e) => {
     state.groupKs = Number(e.target.value) || 0;
+    updateCalcCells();
+  });
+  $('#ko-input').addEventListener('input', (e) => {
+    state.ko = Number(e.target.value);
+    if (!Number.isFinite(state.ko)) state.ko = 1;
+    updateCalcCells();
+  });
+  $('#cos-target').addEventListener('input', (e) => {
+    state.cosTarget = Number(e.target.value) || 0.95;
     updateCalcCells();
   });
 
@@ -252,27 +306,24 @@ function bind() {
   });
 
   $('#btn-add').addEventListener('click', () => {
-    state.rows.push({
-      id: uid(), name: '', n: 1, pnUnit: 0, ki: 0.2, cosPhi: 0.8, ks: 0.5
-    });
+    state.rows.push({ id: uid(), name: '', n: 1, pnUnit: 0, ki: 0.2, cosPhi: 0.8, ks: 0.5 });
     renderRows();
   });
 
   $('#btn-save-json').addEventListener('click', () => {
     const payload = {
-      version: 1,
+      version: 2,
       mode: state.mode,
       krTable: state.krTable,
       un: state.un,
       krOverride: state.krOverride,
       krManual: state.krManual,
       groupKs: state.groupKs,
-      rows: state.rows.map(({ name, n, pnUnit, ki, cosPhi, ks }) => ({
-        name, n, pnUnit, ki, cosPhi, ks
-      }))
+      ko: state.ko,
+      cosTarget: state.cosTarget,
+      rows: state.rows.map(({ name, n, pnUnit, ki, cosPhi, ks }) => ({ name, n, pnUnit, ki, cosPhi, ks }))
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
-    downloadBlob(blob, 'rtm-loads.json');
+    downloadBlob(new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' }), 'rtm-loads.json');
   });
 
   $('#btn-load-json').addEventListener('click', () => $('#file-json').click());
@@ -299,6 +350,8 @@ function bind() {
       if (data.krOverride != null) state.krOverride = !!data.krOverride;
       if (data.krManual != null) state.krManual = Number(data.krManual) || 1;
       if (data.groupKs != null) state.groupKs = Number(data.groupKs) || 0.5;
+      if (data.ko != null) state.ko = Number(data.ko);
+      if (data.cosTarget != null) state.cosTarget = Number(data.cosTarget) || 0.95;
       syncControlsFromState();
     } catch (err) {
       alert('Не удалось загрузить JSON: ' + err.message);
@@ -319,11 +372,13 @@ function bind() {
           un: state.un,
           krOverride: state.krOverride,
           krManual: state.krManual,
-          groupKs: state.groupKs
+          groupKs: state.groupKs,
+          ko: state.ko,
+          cosTarget: state.cosTarget
         },
         totals: t
       });
-      downloadBlob(blob, 'rtm-electrical-loads.xlsx');
+      downloadBlob(blob, 'nagruzki-ktp.xlsx');
     } catch (err) {
       alert('Ошибка экспорта Excel: ' + err.message);
       console.error(err);
@@ -334,7 +389,7 @@ function bind() {
   });
 
   $('#btn-reset').addEventListener('click', () => {
-    if (!confirm('Загрузить демо-пример (5 строк)?')) return;
+    if (!confirm('Загрузить демо промысла (УПТ / азот / обогрев)?')) return;
     state.rows = DEMO_ROWS.map((r) => ({ ...r, id: uid() }));
     state.mode = 'rtm';
     state.krTable = 'table1';
@@ -342,6 +397,8 @@ function bind() {
     state.krOverride = false;
     state.krManual = 1;
     state.groupKs = 0.5;
+    state.ko = 0.9;
+    state.cosTarget = 0.95;
     syncControlsFromState();
   });
 }
