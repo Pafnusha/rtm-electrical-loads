@@ -65,6 +65,24 @@ header .sub {
   margin-bottom: 0.4rem;
 }
 
+header.app-header .ext-btn {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 9px;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+header.app-header .ext-btn:hover { background: #d8e6ff; }
+header.app-header .ext-btn:focus-visible { outline: 2px solid #b6d0ff; outline-offset: 2px; }
+
 .panel {
   background: var(--surface);
   border: 1px solid var(--border);
